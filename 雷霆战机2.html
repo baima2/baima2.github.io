@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>雷霆战机</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
+      /* 核心修改2: CSS禁止手机端的所有默认选中和触摸行为 */
+      -webkit-touch-callout: none; /* iOS 禁止长按菜单 */
+      -webkit-user-select: none;   /* Chrome/Safari/Opera 禁止选择文字 */
+      -khtml-user-select: none;    /* Konqueror 禁止选择文字 */
+      -moz-user-select: none;      /* Firefox 禁止选择文字 */
+      -ms-user-select: none;       /* IE/Edge 禁止选择文字 */
+      user-select: none;           /* 标准语法 禁止选择文字 */
+      touch-action: none;          /* 关键：禁止浏览器处理触摸（如滚动、缩放） */
+    }
+    canvas {
+      display: block; /* 防止出现滚动条 */
+      touch-action: none; /* 再次确保 canvas 禁止默认触摸 */
+    }
+  </style>
+</head>
+<body>
+  <canvas id="myCanvas"></canvas>
+  
+  <script>
+    document.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+    }, { passive: false });
+    
+    document.addEventListener('touchstart', function(e) {
+       // 防止双击缩放等
+       if(e.touches.length > 1){
+          e.preventDefault();
+       }
+    }, { passive: false });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/processing.js/1.4.8/processing.min.js"></script>
+  <script type="application/processing" data-processing-target="myCanvas">
+    var start = false;
+    var gameOver = false;
+    var bullets = [];
+    var damageHeight = 0;
+    var enemies = [];
+    var addEnemies = 0;
+    var enemyWidth = innerWidth/20;
+    var enemyHeight = enemyWidth;
+    var planeSize = innerWidth/30;
+    int enemyEscapedCount = 0;
+    int enemyKilledCount = 0;
+    int bulletsFired = 0;
+    int bulletsAccessible = 0;
+    var messages = [];
+    var waiting = 0;
+
+    void spawnEnemies(num) {
+      addEnemies = (num == null || num === "") ? int(random(5, 20)) : int(num);
+      for (int c = 0; c < addEnemies; c++) {
+        float x;
+        boolean tooClose = true;
+        int attempts = 0;
+        int maxAttempts = 100;
+
+        while (tooClose && attempts < maxAttempts) {
+          tooClose = false;
+          attempts ++;
+          x = random(0, innerWidth - enemyWidth);
+          for (int i = 0; i < enemies.length; i++) {
+            if (abs(x - enemies[i].x) <= enemyWidth) {
+              tooClose = true;
+              break;
+            }
+          }
+        }
+
+        enemies.push({
+          x: x,
+          y: 0,
+          damageHeight: 0,
+          speed: random(1, innerHeight / 30 / 5)
+        });
+      }
+    }
+
+    void setGame() {
+      bullets = [];
+      enemies = [];
+      messages = [];
+      waiting = 0;
+      enemyEscapedCount = 0;
+      enemyKilledCount = 0;
+      bulletsFired = 0;
+      bulletsAccessible = 200;
+      spawnEnemies();
+    }
+    
+    void setup() {
+      size(innerWidth, innerHeight);
+      frameRate(30);
+    }
+
+    // 处理点击开始和重新开始
+    void mousePressed() {
+      if (start === false) {
+        if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
+           start = true;
+           gameOver = false;
+           setGame();
+        }
+      }
+      else if (start === true && gameOver === true && waiting >= 5) {
+         if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
+           gameOver = false;
+           setGame();
+         }
+      }
+    }
+
+    void draw() {
+      background(100, 100, 155);
+
+      if (start === false ) { // 菜单界面
+        if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
+          if (mousePressed) { 
+            fill(255, 255, 0); 
+          } else {
+            fill(0, 255, 0); 
+          }
+        } else {
+          fill(255, 255, 255);
+        }
+        rect(innerWidth/4, innerHeight/4, innerWidth/2, innerHeight/2);
+        fill(255, 0, 0);
+        textAlign(CENTER, CENTER);
+        textSize(innerWidth/20);
+        text("开始游戏", innerWidth/2, innerHeight/2);
+      }
+      
+      if (start === true) { // 游戏进行中
+        if (gameOver === true) { // 结算界面
+          if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4 && waiting >= 5) { 
+            if (mousePressed) { 
+              fill(255, 255, 0);
+            } else {
+              fill(0, 255, 0);
+            }
+          } else {
+            fill(255, 255, 255);
+          }
+
+          rect(innerWidth/4, innerHeight/4, innerWidth/2, innerHeight/2);
+          fill(255, 0, 0);
+          textAlign(CENTER, CENTER);
+          textSize(innerWidth/20);
+          
+          waiting += 1/30;
+          var afterFiveSeconds = ceil(5 - waiting);
+          if (afterFiveSeconds > 0) {
+            text("子弹耗尽，游戏结束\n" + afterFiveSeconds + "秒后继续", innerWidth/2, innerHeight/2);
+          } else {
+            text("开始游戏 ", innerWidth/2, innerHeight/2);
+          }
+        }
+
+        if (gameOver === false) {
+          // --- 游戏逻辑 ---
+          var bulletSize = planeSize / 6;
+          var fireSize = planeSize / 3;
+          
+          // 在手机上，mouseX/Y 有时会因为手指遮挡不太准，这里直接用坐标即可
+          var currentX = mouseX;
+          var currentY = mouseY;
+          
+          var leftFireX = currentX - fireSize - bulletSize;
+          var rightFireX = currentX + fireSize;
+          var fireY = currentY - fireSize;
+
+          // 绘制飞机
+          fill(0, 255, 0);
+          triangle(currentX, currentY - planeSize * 1.2, currentX - planeSize, currentY + planeSize, currentX + planeSize, currentY + planeSize);
+          rect(leftFireX, fireY, bulletSize, fireSize * 3);
+          rect(rightFireX, fireY, bulletSize, fireSize * 3);
+          
+          // 发射子弹逻辑：
+          // CSS修复后，按住屏幕时 mousePressed 会保持为 true
+          if (mousePressed && bulletsAccessible > 0) {
+            bullets.push({ x: leftFireX, y: fireY });
+            bullets.push({ x: rightFireX, y: fireY });
+            bulletsFired ++;
+            bulletsAccessible --;
+          }
+          
+          textSize(30);
+          textAlign(LEFT, BOTTOM);
+          fill(0, 255, 255);
+          text("逃逸敌机：" + enemyEscapedCount, 100, 100);
+          text("击毁敌机：" + enemyKilledCount, 100, 200);
+          text("屏幕中敌机总数：" + enemies.length, 100, 300);
+          text("共发射子弹：" + bulletsFired, 100, 400);
+          text("可用子弹总数：" + bulletsAccessible, 100, 500);
+
+          // 敌军逻辑
+          fill(255, 255, 0);
+          for (var t = enemies.length - 1; t >= 0; t--) {
+            rect(enemies[t].x, enemies[t].y, enemyWidth, enemyHeight);
+            enemies[t].y += enemies[t].speed;
+            if (enemies[t].y > innerHeight) {
+              enemies.splice(t,1);
+              enemyEscapedCount ++;
+            }
+          }
+          if (enemies.length < 10) spawnEnemies();
+          if (bulletsAccessible <= 0) gameOver = true;
+
+          // 子弹逻辑
+          for (var z = bullets.length - 1; z >= 0; z--) {
+            fill(255, 255, 0);
+            bullets[z].y -= 20; 
+            rect(bullets[z].x, bullets[z].y, bulletSize, bulletSize);
+            
+            if (bullets[z].y < 0) { 
+              bullets.splice(z, 1);
+              continue;
+            }           
+            
+            for (var t = enemies.length - 1; t >= 0; t--) {
+              if (enemies[t].x < bullets[z].x + bulletSize && 
+                  enemies[t].x + enemyWidth > bullets[z].x && 
+                  bullets[z].y < enemies[t].y + enemyHeight && 
+                  bullets[z].y + bulletSize > enemies[t].y){ 
+                
+                fill(255, 0, 0);
+                if (enemies[t].x < currentX - fireSize && 
+                    enemies[t].x + enemyWidth > currentX + fireSize) { 
+                  enemies[t].damageHeight -= enemyWidth * 3 / 30; 
+                } else {
+                  enemies[t].damageHeight -= enemyWidth/30; 
+                }
+                
+                rect(enemies[t].x, enemies[t].y + enemyWidth, enemyWidth, enemies[t].damageHeight);
+                if (enemies[t].damageHeight < -enemyHeight) { 
+                  enemyKilledCount ++; 
+                  bulletsAccessible += 10;
+                  messages.push({ 
+                    content: "子弹+10", x: enemies[t].x + enemyWidth, y: enemies[t].y, life: 90
+                  }); 
+                  enemies[t].damageHeight = 0;
+                  enemies.splice(t, 1);
+                  spawnEnemies(floor(random(0,3)));
+                  continue;
+                }
+                bullets.splice(z, 1); 
+                break;
+              }
+            }
+          }
+
+          // 消息提示逻辑
+          for (var i = messages.length - 1; i >= 0; i--) {
+            float ratio = messages[i].life / 90;
+            fill(255, 255 * (1- ratio), 0, 255 * ratio);
+            text(messages[i].content, messages[i].x, messages[i].y);
+            messages[i].y -= 0.5;
+            messages[i].life--;
+            if (messages[i].life <= 0) messages.splice(i, 1);
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>
