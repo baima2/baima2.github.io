@@ -134,13 +134,14 @@
           fill(255, 0, 0);
           textAlign(CENTER, CENTER);
           textSize(innerWidth/20);
-          text("开始游戏 ", innerWidth/2, innerHeight/2);
-
           //等待5秒，
           waiting += 1/30;
           var afterFiveSeconds = ceil(5 - waiting);
-          if (afterFiveSeconds >= 0) {
-            text("子弹耗尽，游戏结束\n" + afterFiveSeconds + "秒后继续", innerWidth/2, innerHeight/3);
+          if (afterFiveSeconds >= 0 && gameOver === true) {
+            text("子弹耗尽，游戏结束\n" + afterFiveSeconds + "秒后继续", innerWidth/2, innerHeight/2);
+          }
+          else {
+            text("开始游戏 ", innerWidth/2, innerHeight/2);
           }
         }
 
