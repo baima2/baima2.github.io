@@ -9,18 +9,22 @@
       margin: 0;
       overflow: hidden;
     }
+    canvas {
+      touch-action: none; /* 禁止触摸滚动/缩放 */
+    }
   </style>
 </head>
 <body>
   <canvas id="myCanvas"></canvas>
   <script src="https://cdn.jsdelivr.net/processing.js/1.4.8/processing.min.js"></script>
   <script type="application/processing" data-processing-target="myCanvas">
+    // 游戏状态变量
     var start = false;
     var gameOver = false;
     var bullets = [];
     var damageHeight = 0;
     var enemies = [];
-	  var addEnemies = 0;
+    var addEnemies = 0;
     var enemyWidth = innerWidth/20;
     var enemyHeight = enemyWidth;
     var planeSize = innerWidth/30;
@@ -31,7 +35,12 @@
     var messages = [];
     var waiting = 0;
 
-    //添加敌机群
+    // ===== 自定义触摸/鼠标变量（替代原生的 mouseX/mouseY/mousePressed）=====
+    window.touchX = innerWidth / 2;   // 默认屏幕中心
+    window.touchY = innerHeight / 2;
+    window.touching = false;          // 是否按下（开火）
+
+    // 添加敌机群
     void spawnEnemies(num) {
       addEnemies = (num == null || num === "") ? int(random(5, 20)) : int(num);
       for (int c = 0; c < addEnemies; c++) {
@@ -58,7 +67,6 @@
           damageHeight: 0,
           speed: random(1, innerHeight / 30 / 5)
         });
-        
       }
     }
 
@@ -67,51 +75,93 @@
       enemies = [];
       messages = [];
       waiting = 0;
-
       enemyEscapedCount = 0;
       enemyKilledCount = 0;
       bulletsFired = 0;
       bulletsAccessible = 200;
-
       spawnEnemies();
     }
     
     void setup() {
       size(innerWidth, innerHeight);
       frameRate(30);
+
+      // 获取canvas元素并添加事件监听（原生JS，确保触摸/鼠标都能更新自定义坐标）
+      var canvas = document.getElementById('myCanvas');
+      if (canvas) {
+        // 触摸事件
+        canvas.addEventListener('touchstart', function(e) {
+          e.preventDefault();
+          if (e.touches.length > 0) {
+            window.touchX = e.touches[0].clientX;
+            window.touchY = e.touches[0].clientY;
+            window.touching = true;
+          }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', function(e) {
+          e.preventDefault();
+          if (e.touches.length > 0) {
+            window.touchX = e.touches[0].clientX;
+            window.touchY = e.touches[0].clientY;
+            // 不修改 touching，保持按下状态
+          }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', function(e) {
+          e.preventDefault();
+          window.touching = false;
+        }, { passive: false });
+
+        canvas.addEventListener('touchcancel', function(e) {
+          e.preventDefault();
+          window.touching = false;
+        }, { passive: false });
+
+        // 鼠标事件（方便桌面调试）
+        canvas.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          window.touchX = e.clientX;
+          window.touchY = e.clientY;
+          window.touching = true;
+        });
+
+        canvas.addEventListener('mousemove', function(e) {
+          // 鼠标移动时始终更新坐标（即使不按下）
+          window.touchX = e.clientX;
+          window.touchY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', function(e) {
+          e.preventDefault();
+          window.touching = false;
+        });
+      }
     }
 
-    void mousePressed() {
-      if (start === false) {
-        if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
-          start = true;
-          gameOver = false;
-          setGame();
-        }
-      }
-      else if (start === true && gameOver === true && waiting >= 5) {
-       if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
-          gameOver = false;
-          setGame();
-        } 
-      }
-    }
+    // 移除原有的 touchStarted/touchEnded，避免干扰
+    // void touchStarted() {}
+    // void touchEnded() {}
 
     void draw() {
       background(100, 100, 155);
-      if (start === false ) { //游戏未开始
-        if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
-          if (mousePressed) { 
+
+      // ===== 游戏未开始 =====
+      if (start === false) {
+        // 用 window.touchX/Y 和 window.touching 代替 mouseX/mouseY/mousePressed
+        if (window.touchX > innerWidth/4 && window.touchX < innerWidth*3/4 &&
+            window.touchY > innerHeight/4 && window.touchY < innerHeight*3/4) {
+          if (window.touching) {
             fill(255, 255, 0);
+            start = true;
+            gameOver = false;
+            setGame();
+          } else {
+            fill(0, 255, 0);  // 触摸在按钮内但没有按下 -> 变绿
           }
-          else {
-            fill(0, 255, 0);
-          }
-        }
-        else {
+        } else {
           fill(255, 255, 255);
         }
-
         rect(innerWidth/4, innerHeight/4, innerWidth/2, innerHeight/2);
         fill(255, 0, 0);
         textAlign(CENTER, CENTER);
@@ -119,18 +169,20 @@
         text("开始游戏", innerWidth/2, innerHeight/2);
       }
 
-      
-      if (start === true) { //开始游戏
-        if (gameOver === true) { //结算页面
-          if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4 && waiting >= 5) { //开始按钮
-            if (mousePressed) { 
+      // ===== 游戏中 =====
+      if (start === true) {
+        // 游戏结束结算页面
+        if (gameOver === true) {
+          if (window.touchX > innerWidth/4 && window.touchX < innerWidth*3/4 &&
+              window.touchY > innerHeight/4 && window.touchY < innerHeight*3/4 && waiting >= 5) {
+            if (window.touching) {
               fill(255, 255, 0);
-            }
-            else {
+              gameOver = false;
+              setGame();
+            } else {
               fill(0, 255, 0);
             }
-          }
-          else {
+          } else {
             fill(255, 255, 255);
           }
 
@@ -138,53 +190,44 @@
           fill(255, 0, 0);
           textAlign(CENTER, CENTER);
           textSize(innerWidth/20);
-
-          //等待5秒，
           waiting += 1/30;
           var afterFiveSeconds = ceil(5 - waiting);
-          if (afterFiveSeconds > 0) {
+          if (afterFiveSeconds >= 0 && gameOver === true) {
             text("子弹耗尽，游戏结束\n" + afterFiveSeconds + "秒后继续", innerWidth/2, innerHeight/2);
-          }
-          else {
+          } else {
             text("开始游戏 ", innerWidth/2, innerHeight/2);
           }
         }
 
+        // 游戏进行中
         if (gameOver === false) {
-          //开始游戏
           var bulletSize = planeSize / 6;
           var fireSize = planeSize / 3;
-          //炮筒位置
-          var leftFireX = mouseX - fireSize - bulletSize;
-          var rightFireX = mouseX + fireSize;
-          var fireY = mouseY - fireSize
-          //子弹位置
-          var leftBulletX = leftFireX;
-          var rightBulletX = rightFireX
-
           
-          //绘制飞机
+          // 使用 window.touchX/Y 计算炮口位置
+          var leftFireX = window.touchX - fireSize - bulletSize;
+          var rightFireX = window.touchX + fireSize;
+          var fireY = window.touchY - fireSize;
+          var leftBulletX = leftFireX;
+          var rightBulletX = rightFireX;
+
+          // 绘制飞机
           fill(0, 255, 0);
-          triangle(mouseX, mouseY - planeSize * 1.2, mouseX - planeSize, mouseY + planeSize, mouseX + planeSize, mouseY + planeSize);
+          triangle(window.touchX, window.touchY - planeSize * 1.2,
+                   window.touchX - planeSize, window.touchY + planeSize,
+                   window.touchX + planeSize, window.touchY + planeSize);
           rect(leftFireX, fireY, bulletSize, fireSize * 3);
           rect(rightFireX, fireY, bulletSize, fireSize * 3);
-          
-          //装填子弹
-          if (mousePressed && bulletsAccessible > 0) {
-            bullets.push({
-              x: leftBulletX,
-              y: mouseY - fireSize
-              });
 
-            bullets.push({
-              x: rightBulletX,
-              y: mouseY - fireSize
-            })
-
+          // 发射子弹（使用 window.touching）
+          if (window.touching && bulletsAccessible > 0) {
+            bullets.push({ x: leftBulletX, y: window.touchY - fireSize });
+            bullets.push({ x: rightBulletX, y: window.touchY - fireSize });
             bulletsFired ++;
             bulletsAccessible --;
           }
-          
+
+          // 显示信息
           textSize(30);
           textAlign(LEFT, BOTTOM);
           fill(0, 255, 255);
@@ -194,72 +237,73 @@
           text("共发射子弹：" + bulletsFired, 100, 400);
           text("可用子弹总数：" + bulletsAccessible, 100, 500);
 
-          //绘制敌军群
+          // 绘制敌机
           fill(255, 255, 0);
           for (var t = enemies.length - 1; t >= 0; t--) {
             rect(enemies[t].x, enemies[t].y, enemyWidth, enemyHeight);
             enemies[t].y += enemies[t].speed;
-            if (enemies[t].y > innerHeight) {//超出屏幕外，清除
-              enemies.splice(t,1);
+            if (enemies[t].y > innerHeight) {
+              enemies.splice(t, 1);
               enemyEscapedCount ++;
             }
           }
-          if (enemies.length < 10) { //屏幕中敌机低于十，自动新增
+          if (enemies.length < 10) {
             spawnEnemies();
           }
-          if (bulletsAccessible === 0) { //没有子弹，游戏结束
+          if (bulletsAccessible === 0) {
             gameOver = true;
           }
 
+          // 子弹逻辑
           for (var z = bullets.length - 1; z >= 0; z--) {
             fill(255, 255, 0);
-            bullets[z].y -=20; //子弹拉开距离
+            bullets[z].y -= 20;
             rect(bullets[z].x, bullets[z].y, bulletSize, bulletSize);
-            if (bullets[z].y < 0) { //清除屏幕外子弹
+            if (bullets[z].y < 0) {
               bullets.splice(z, 1);
               continue;
-            }          
-            //子弹碰撞敌军群
+            }
+
             for (var t = enemies.length - 1; t >= 0; t--) {
-              //碰撞一颗子弹
-              if (enemies[t].x < bullets[z].x + bulletSize && //敌军左侧小于子弹右侧
-                  enemies[t].x + enemyWidth > bullets[z].x && //敌军右侧大于子弹左侧
-                  bullets[z].y < enemies[t].y + enemyHeight && //子弹顶部小于敌军底部
-                  bullets[z].y + bulletSize > enemies[t].y){ //子弹底部大于敌军顶部
-                //碰撞两颗子弹
+              if (enemies[t].x < bullets[z].x + bulletSize &&
+                  enemies[t].x + enemyWidth > bullets[z].x &&
+                  bullets[z].y < enemies[t].y + enemyHeight &&
+                  bullets[z].y + bulletSize > enemies[t].y) {
+
                 fill(255, 0, 0);
-                if (enemies[t].x < mouseX - fireSize && //敌军左侧小于左侧子弹右侧
-                    enemies[t].x + enemyWidth > mouseX + fireSize) { //敌军右侧大于右侧子弹左侧
-                  enemies[t].damageHeight -= enemyWidth * 3 / 30; //攻击力度乘三
+                // 注意这里也用了 window.touchX
+                if (enemies[t].x < window.touchX - fireSize &&
+                    enemies[t].x + enemyWidth > window.touchX + fireSize) {
+                  enemies[t].damageHeight -= enemyWidth * 3 / 30;
+                } else {
+                  enemies[t].damageHeight -= enemyWidth / 30;
                 }
-                else {
-                  enemies[t].damageHeight -= enemyWidth/30; //攻击力度原速
-                }
-                
-                rect(enemies[t].x, enemies[t].y + enemyWidth, enemyWidth, enemies[t].damageHeight);//绘制敌军受损部分
-                if (enemies[t].damageHeight < -enemyHeight) { //受损部分大于敌军高度
-                  enemyKilledCount ++; //击杀敌军数量加一
-                  bulletsAccessible += 10;//获得十发子弹
-                  messages.push({ //推送获得子弹消息
+
+                rect(enemies[t].x, enemies[t].y + enemyWidth, enemyWidth, enemies[t].damageHeight);
+                if (enemies[t].damageHeight < -enemyHeight) {
+                  enemyKilledCount ++;
+                  bulletsAccessible += 10;
+                  messages.push({
                     content: "子弹+10",
                     x: enemies[t].x + enemyWidth,
                     y: enemies[t].y,
                     life: 90
-                  }); 
+                  });
                   enemies[t].damageHeight = 0;
-                  enemies.splice(t, 1);//删除损毁敌机
-                  spawnEnemies(floor(random(0,3)));//增加零、一或二个
+                  enemies.splice(t, 1);
+                  spawnEnemies(floor(random(0, 3)));
                   continue;
                 }
-                bullets.splice(z, 1); //删除一个子弹
+                bullets.splice(z, 1);
                 break;
               }
             }
           }
 
+          // 消息动画
           for (var i = messages.length - 1; i >= 0; i--) {
             float ratio = messages[i].life / 90;
-            fill(255, 255 * (1- ratio), 0, 255 * ratio);
+            fill(255, 255 * (1 - ratio), 0, 255 * ratio);
             text(messages[i].content, messages[i].x, messages[i].y);
             messages[i].y -= 0.5;
             messages[i].life--;
@@ -270,7 +314,6 @@
         }
       }
     }
-
   </script>
 </body>
 </html>
