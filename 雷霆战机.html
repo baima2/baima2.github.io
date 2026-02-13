@@ -81,12 +81,20 @@
       frameRate(30);
     }
 
-    void touchStarted() {
-      mousePressed = true;
-    }
-
-    void touchEnded() {
-      mousePressed = false;
+    void mousePressed() {
+      if (start === false) {
+        if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
+          start = true;
+          gameOver = false;
+          setGame();
+        }
+      }
+      else if (start === true && gameOver === true && waiting >= 5) {
+       if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
+          gameOver = false;
+          setGame();
+        } 
+      }
     }
 
     void draw() {
@@ -95,9 +103,6 @@
         if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
           if (mousePressed) { 
             fill(255, 255, 0);
-            start = true;
-            gameOver = false;
-            setGame();
           }
           else {
             fill(0, 255, 0);
@@ -106,6 +111,7 @@
         else {
           fill(255, 255, 255);
         }
+
         rect(innerWidth/4, innerHeight/4, innerWidth/2, innerHeight/2);
         fill(255, 0, 0);
         textAlign(CENTER, CENTER);
@@ -119,8 +125,6 @@
           if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4 && waiting >= 5) { //开始按钮
             if (mousePressed) { 
               fill(255, 255, 0);
-              gameOver = false;
-              setGame();
             }
             else {
               fill(0, 255, 0);
@@ -134,10 +138,11 @@
           fill(255, 0, 0);
           textAlign(CENTER, CENTER);
           textSize(innerWidth/20);
+
           //等待5秒，
           waiting += 1/30;
           var afterFiveSeconds = ceil(5 - waiting);
-          if (afterFiveSeconds >= 0 && gameOver === true) {
+          if (afterFiveSeconds > 0) {
             text("子弹耗尽，游戏结束\n" + afterFiveSeconds + "秒后继续", innerWidth/2, innerHeight/2);
           }
           else {
