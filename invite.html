@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Project: Event invite</title>
+        <script src="https://cdn.jsdelivr.net/processing.js/1.4.8/processing.min.js"></script>
+        <style>
+            html {
+                height: 100%;
+            }
+            body {
+                position: relative;
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                overflow: hidden;
+                font-size: 30px;
+                font-family: cursive;
+                font-weight: bold;
+            }
+            canvas {
+                border: 1px solid;
+                display: block;
+                width: 100%;
+                height: 100%;
+                position: absolute;
+                z-index:1;
+                opacity: 0.4;
+            }
+            
+            div {
+                width: 100%;
+                position: fixed;
+                z-index: 200;
+                text-align: center;
+            }
+            
+            
+            .content {
+                text-align: left;
+                margin-left: 20%;
+            }
+
+        </style>
+    </head>
+    <body>
+        <div>
+            <h1>You're invited!</h1>
+            <h2>Northern Poet Tea Salon!</h2>
+            <br>
+            <p class="content">The details:</p>
+            <ul class="content">
+                <li>Warm Poetry Discussing!</li>
+                <li>Fragrant Tea Tasting!</li>
+                <li>High Level Academic Debating!</li>
+                <li>Fantastic Communicating!</li>
+            </ul>
+        </div>
+        <canvas id="mycanvas"></canvas>
+        <script type="application/processing" data-processing-target="mycanvas">
+        var bigCircleColor1 = 0;
+        var bigCircleColor2 = 0;
+        var bigCircleColor3 = 0;
+        var canvasWidth = window.innerWidth;
+        var canvasHeight = window.innerHeight;
+        var count = 0
+        var y = canvasHeight/2;
+        var speed = canvasHeight/50;
+        var maxBallHeight = canvasHeight/2;
+        var ballR =255;
+        var ballG = 0;
+        var x = 100;
+
+        void setup() {
+            size(canvasWidth, canvasHeight);
+            frameRate(30);
+        }
+        void draw() {
+            background(187, 30, 47);
+            stroke(bigCircleColor1, bigCircleColor2, bigCircleColor3);
+            strokeWeight(canvasHeight/5);
+            fill(225, 120, 253)
+            ellipse(canvasWidth/2, canvasHeight/2, canvasHeight/2, canvasHeight/2);
+            
+            noStroke();
+            fill(ballR, ballG, 0);
+            ellipse(canvasWidth/2, y, canvasHeight/20, canvasHeight/20)
+            y += speed;
+            
+            if(y> canvasHeight * 3/4) {
+                y = canvasHeight * 3/4;
+                speed = -speed * 0.97;
+                maxBallHeight = maxBallHeight + 30 *Math.pow(x,-0.5);
+                x ++;
+                count++;
+                ballR -=5;
+                bigCircleColor1 = random(0,255);
+                bigCircleColor2 = random(0,255);
+                bigCircleColor3 = random(0,255);
+            }
+            else if(y < maxBallHeight) {
+                y = maxBallHeight;
+                speed = -speed * 0.97;
+                ballG +=5;
+            }
+            if (maxBallHeight > canvasHeight * 3/4) {
+            maxBallHeight = canvasHeight * 3/4;
+            speed = 0;
+            noLoop(); 
+            }
+            // 在画布上显示数值，这样能看到实时变化
+fill(255);
+textSize(20);
+text("最大高度: " + nf(maxBallHeight, 1, 1), 20, 30);
+text("当前位置: " + nf(y, 1, 1), 20, 60);
+text("速度: " + nf(speed, 1, 2), 20, 90);
+text("弹跳次数: " + count, 20, 120);
+        }
+        
+        </script>
+    </body>
+</html>
+
