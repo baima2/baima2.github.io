@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>雷霆战机</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="myCanvas"></canvas>
+  <script src="https://cdn.jsdelivr.net/processing.js/1.4.8/processing.min.js"></script>
+  <script type="application/processing" data-processing-target="myCanvas">
+    var start = false;
+    var gameOver = false;
+    var bullets = [];
+    var damageHeight = 0;
+    var enemies = [];
+	  var addEnemies = 0;
+    var enemyWidth = innerWidth/20;
+    var enemyHeight = enemyWidth;
+    var planeSize = innerWidth/30;
+    int enemyEscapedCount = 0;
+    int enemyKilledCount = 0;
+    int bulletsFired = 0;
+    int bulletsAccessible = 0;
+    var messages = [];
+    var waiting = 0;
+
+    //添加敌机群
+    void spawnEnemies(num) {
+      addEnemies = (num == null || num === "") ? int(random(5, 20)) : int(num);
+      for (int c = 0; c < addEnemies; c++) {
+        float x;
+        boolean tooClose = true;
+        int attempts = 0;
+        int maxAttempts = 100;
+
+        while (tooClose && attempts < maxAttempts) {
+          tooClose = false;
+          attempts ++;
+          x = random(0, innerWidth - enemyWidth);
+          for (int i = 0; i < enemies.length; i++) {
+            if (abs(x - enemies[i].x) <= enemyWidth) {
+              tooClose = true;
+              break;
+            }
+          }
+        }
+
+        enemies.push({
+          x: x,
+          y: 0,
+          damageHeight: 0,
+          speed: random(1, innerHeight / 30 / 5)
+        });
+        
+      }
+    }
+
+    void setGame() {
+      bullets = [];
+      enemies = [];
+      messages = [];
+      waiting = 0;
+
+      enemyEscapedCount = 0;
+      enemyKilledCount = 0;
+      bulletsFired = 0;
+      bulletsAccessible = 200;
+
+      spawnEnemies();
+    }
+    
+    void setup() {
+      size(innerWidth, innerHeight);
+      frameRate(30);
+    }
+
+    void touchStarted() {
+      mousePressed = true;
+    }
+
+    void touchEnded() {
+      mousePressed = false;
+    }
+
+    void draw() {
+      background(100, 100, 155);
+      if (start === false ) { //游戏未开始
+        if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4) {
+          if (mousePressed) { 
+            fill(255, 255, 0);
+            start = true;
+            gameOver = false;
+            setGame();
+          }
+          else {
+            fill(0, 255, 0);
+          }
+        }
+        else {
+          fill(255, 255, 255);
+        }
+        rect(innerWidth/4, innerHeight/4, innerWidth/2, innerHeight/2);
+        fill(255, 0, 0);
+        textAlign(CENTER, CENTER);
+        textSize(innerWidth/20);
+        text("开始游戏", innerWidth/2, innerHeight/2);
+      }
+
+      
+      if (start === true) { //开始游戏
+        if (gameOver === true) { //结算页面
+          if (mouseX > innerWidth/4 && mouseX < innerWidth*3/4 && mouseY > innerHeight/4 && mouseY < innerHeight*3/4 && waiting >= 5) { //开始按钮
+            if (mousePressed) { 
+              fill(255, 255, 0);
+              gameOver = false;
+              setGame();
+            }
+            else {
+              fill(0, 255, 0);
+            }
+          }
+          else {
+            fill(255, 255, 255);
+          }
+
+          rect(innerWidth/4, innerHeight/4, innerWidth/2, innerHeight/2);
+          fill(255, 0, 0);
+          textAlign(CENTER, CENTER);
+          textSize(innerWidth/20);
+          text("开始游戏 ", innerWidth/2, innerHeight/2);
+
+          //等待5秒，
+          waiting += 1/30;
+          var afterFiveSeconds = ceil(5 - waiting);
+          if (afterFiveSeconds >= 0) {
+            text("子弹耗尽，游戏结束\n" + afterFiveSeconds + "秒后继续", innerWidth/2, innerHeight/3);
+          }
+        }
+
+        if (gameOver === false) {
+          //开始游戏
+          var bulletSize = planeSize / 6;
+          var fireSize = planeSize / 3;
+          //炮筒位置
+          var leftFireX = mouseX - fireSize - bulletSize;
+          var rightFireX = mouseX + fireSize;
+          var fireY = mouseY - fireSize
+          //子弹位置
+          var leftBulletX = leftFireX;
+          var rightBulletX = rightFireX
+
+          
+          //绘制飞机
+          fill(0, 255, 0);
+          triangle(mouseX, mouseY - planeSize * 1.2, mouseX - planeSize, mouseY + planeSize, mouseX + planeSize, mouseY + planeSize);
+          rect(leftFireX, fireY, bulletSize, fireSize * 3);
+          rect(rightFireX, fireY, bulletSize, fireSize * 3);
+          
+          //装填子弹
+          if (mousePressed && bulletsAccessible > 0) {
+            bullets.push({
+              x: leftBulletX,
+              y: mouseY - fireSize
+              });
+
+            bullets.push({
+              x: rightBulletX,
+              y: mouseY - fireSize
+            })
+
+            bulletsFired ++;
+            bulletsAccessible --;
+          }
+          
+          textSize(30);
+          textAlign(LEFT, BOTTOM);
+          fill(0, 255, 255);
+          text("逃逸敌机：" + enemyEscapedCount, 100, 100);
+          text("击毁敌机：" + enemyKilledCount, 100, 200);
+          text("屏幕中敌机总数：" + enemies.length, 100, 300);
+          text("共发射子弹：" + bulletsFired, 100, 400);
+          text("可用子弹总数：" + bulletsAccessible, 100, 500);
+
+          //绘制敌军群
+          fill(255, 255, 0);
+          for (var t = enemies.length - 1; t >= 0; t--) {
+            rect(enemies[t].x, enemies[t].y, enemyWidth, enemyHeight);
+            enemies[t].y += enemies[t].speed;
+            if (enemies[t].y > innerHeight) {//超出屏幕外，清除
+              enemies.splice(t,1);
+              enemyEscapedCount ++;
+            }
+          }
+          if (enemies.length < 10) { //屏幕中敌机低于十，自动新增
+            spawnEnemies();
+          }
+          if (bulletsAccessible === 0) { //没有子弹，游戏结束
+            gameOver = true;
+          }
+
+          for (var z = bullets.length - 1; z >= 0; z--) {
+            fill(255, 255, 0);
+            bullets[z].y -=20; //子弹拉开距离
+            rect(bullets[z].x, bullets[z].y, bulletSize, bulletSize);
+            if (bullets[z].y < 0) { //清除屏幕外子弹
+              bullets.splice(z, 1);
+              continue;
+            }          
+            //子弹碰撞敌军群
+            for (var t = enemies.length - 1; t >= 0; t--) {
+              //碰撞一颗子弹
+              if (enemies[t].x < bullets[z].x + bulletSize && //敌军左侧小于子弹右侧
+                  enemies[t].x + enemyWidth > bullets[z].x && //敌军右侧大于子弹左侧
+                  bullets[z].y < enemies[t].y + enemyHeight && //子弹顶部小于敌军底部
+                  bullets[z].y + bulletSize > enemies[t].y){ //子弹底部大于敌军顶部
+                //碰撞两颗子弹
+                fill(255, 0, 0);
+                if (enemies[t].x < mouseX - fireSize && //敌军左侧小于左侧子弹右侧
+                    enemies[t].x + enemyWidth > mouseX + fireSize) { //敌军右侧大于右侧子弹左侧
+                  enemies[t].damageHeight -= enemyWidth * 3 / 30; //攻击力度乘三
+                }
+                else {
+                  enemies[t].damageHeight -= enemyWidth/30; //攻击力度原速
+                }
+                
+                rect(enemies[t].x, enemies[t].y + enemyWidth, enemyWidth, enemies[t].damageHeight);//绘制敌军受损部分
+                if (enemies[t].damageHeight < -enemyHeight) { //受损部分大于敌军高度
+                  enemyKilledCount ++; //击杀敌军数量加一
+                  bulletsAccessible += 10;//获得十发子弹
+                  messages.push({ //推送获得子弹消息
+                    content: "子弹+10",
+                    x: enemies[t].x + enemyWidth,
+                    y: enemies[t].y,
+                    life: 90
+                  }); 
+                  enemies[t].damageHeight = 0;
+                  enemies.splice(t, 1);//删除损毁敌机
+                  spawnEnemies(floor(random(0,3)));//增加零、一或二个
+                  continue;
+                }
+                bullets.splice(z, 1); //删除一个子弹
+                break;
+              }
+            }
+          }
+
+          for (var i = messages.length - 1; i >= 0; i--) {
+            float ratio = messages[i].life / 90;
+            fill(255, 255 * (1- ratio), 0, 255 * ratio);
+            text(messages[i].content, messages[i].x, messages[i].y);
+            messages[i].y -= 0.5;
+            messages[i].life--;
+            if (messages[i].life <= 0) {
+              messages.splice(i, 1);
+            }
+          }
+        }
+      }
+    }
+
+  </script>
+</body>
+</html>
