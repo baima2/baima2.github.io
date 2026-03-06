@@ -139,10 +139,6 @@
       }
     }
 
-    // 移除原有的 touchStarted/touchEnded，避免干扰
-    // void touchStarted() {}
-    // void touchEnded() {}
-
     void draw() {
       background(100, 100, 155);
 
@@ -203,6 +199,13 @@
         if (gameOver === false) {
           var bulletSize = planeSize / 6;
           var fireSize = planeSize / 3;
+          //飞机坐标
+          var planeX1 = window.touchX;
+          var planeY1 = window.touchY - planeSize * 1.2;
+          var planeX2 = window.touchX - planeSize;
+          var planeY2 = window.touchY + planeSize;
+          var planeX3 = window.touchX + planeSize;
+          var planeY3 = window.touchY + planeSize;
           
           // 使用 window.touchX/Y 计算炮口位置
           var leftFireX = window.touchX - fireSize - bulletSize;
@@ -210,19 +213,20 @@
           var fireY = window.touchY - fireSize;
           var leftBulletX = leftFireX;
           var rightBulletX = rightFireX;
+          var bulletY = fireY;
 
           // 绘制飞机
           fill(0, 255, 0);
-          triangle(window.touchX, window.touchY - planeSize * 1.2,
-                   window.touchX - planeSize, window.touchY + planeSize,
-                   window.touchX + planeSize, window.touchY + planeSize);
+          triangle(planeX1, planeY1,
+                  planeX2, planeY2,
+                  planeX3, planeY3);
           rect(leftFireX, fireY, bulletSize, fireSize * 3);
           rect(rightFireX, fireY, bulletSize, fireSize * 3);
 
           // 发射子弹（使用 window.touching）
           if (window.touching && bulletsAccessible > 0) {
-            bullets.push({ x: leftBulletX, y: window.touchY - fireSize });
-            bullets.push({ x: rightBulletX, y: window.touchY - fireSize });
+            bullets.push({ x: leftBulletX, y: bulletY });
+            bullets.push({ x: rightBulletX, y: bulletY });
             bulletsFired ++;
             bulletsAccessible --;
           }
@@ -271,15 +275,15 @@
                   bullets[z].y + bulletSize > enemies[t].y) {
 
                 fill(255, 0, 0);
-                // 注意这里也用了 window.touchX
-                if (enemies[t].x < window.touchX - fireSize &&
-                    enemies[t].x + enemyWidth > window.touchX + fireSize) {
+                // 两发命中，三倍伤害
+                if (enemies[t].x < leftBulletX + bulletSize &&
+                    enemies[t].x + enemyWidth > rightBulletX) {
                   enemies[t].damageHeight -= enemyWidth * 3 / 30;
                 } else {
                   enemies[t].damageHeight -= enemyWidth / 30;
                 }
 
-                rect(enemies[t].x, enemies[t].y + enemyWidth, enemyWidth, enemies[t].damageHeight);
+                rect(enemies[t].x, enemies[t].y + enemyHeight, enemyWidth, enemies[t].damageHeight);
                 if (enemies[t].damageHeight < -enemyHeight) {
                   enemyKilledCount ++;
                   bulletsAccessible += 10;
@@ -299,6 +303,57 @@
               }
             }
           }
+
+          //检查是否撞击
+          //palneX1，X2，X3是否在方块内
+          //敌机的右下角坐标：enemies[t].x + enemyWidth , enemies[t].y + enemyHeight
+          //设planeX2为原点，则所有坐标-planeX2，则ERX - planeX2, ERY - planeY2
+          //飞机左侧直线为y = -2.2x + b; b = y1 + 2.2x1
+
+          //敌机碰撞我机检测
+          for (var t = enemies.length - 1; t >= 0; t--) {
+          var enemyRightButtomCornerX = enemies[t].x + enemyWidth; 
+          var enemyRightButtomCornerY = enemies[t].y + enemyHeight;
+          var enemyRightButtomCornerYOnLeftLine = -2.2 * enemyRightButtomCornerX + planeY2 + 2.2 * planeX2; //根据斜率公式计算直线上对应的点
+          var enemyLeftButtomCornerX = enemies[t].x;
+          var enemyLeftButtomCornerY = enemies[t].y + enemyHeight;
+          var enemyLeftButtomCorberYOnRightLine = 2.2 * enemyLeftButtomCornerX + planeY3 - 2.2 * planeX3;
+
+            if ( planeY1 < enemies[t].y + enemyHeight &&
+                  planeY2 > enemies[t].y &&
+                  planeX2 < enemies[t].x + enemyWidth &&
+                  planeX3 > enemies[t].x ) { //先假设飞机为一个正方体，发生碰撞
+                    textSize(50);
+                    text("碰撞将使飞机受损", 200, 300);
+
+                    if (enemyRightButtomCornerY > enemyRightButtomCornerYOnLeftLine &&
+                    enemyRightButtomCornerX < planeX3 &&
+                    enemyLeftButtomCornerY > enemyLeftButtomCorberYOnRightLine &&
+                    enemyLeftButtomCornerX > planeX2) { //左右都撞，变红
+                      
+                      fill(255, 0, 0);
+                      text("受到严重撞击", 200, 400);
+                      triangle(planeX1, planeY1,
+                              planeX2, planeY2,
+                              planeX3, planeY3);
+                      rect(leftFireX, fireY, bulletSize, fireSize * 3);
+                      rect(rightFireX, fireY, bulletSize, fireSize * 3);
+                    } else if ((enemyRightButtomCornerY > enemyRightButtomCornerYOnLeftLine &&
+                    enemyRightButtomCornerX < planeX3) ||
+                    (enemyLeftButtomCornerY > enemyLeftButtomCorberYOnRightLine &&
+                    enemyLeftButtomCornerX > planeX2)) { //撞一个，变蓝
+                      
+                      fill(0, 0, 255);
+                      text("受到轻微撞击", 200, 500);
+                      triangle(planeX1, planeY1,
+                              planeX2, planeY2,
+                              planeX3, planeY3);
+                      rect(leftFireX, fireY, bulletSize, fireSize * 3);
+                      rect(rightFireX, fireY, bulletSize, fireSize * 3);
+                    }
+                  }
+          }
+ 
 
           // 消息动画
           for (var i = messages.length - 1; i >= 0; i--) {
