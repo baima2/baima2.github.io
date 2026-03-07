@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>雷霆战机</title>
+
+<style>
+body{
+margin:0;
+overflow:hidden;
+background:#222;
+}
+
+canvas{
+touch-action:none;
+display:block;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<script>
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+let W=window.innerWidth;
+let H=window.innerHeight;
+
+canvas.width=W;
+canvas.height=H;
+
+window.addEventListener("resize",()=>{
+W=window.innerWidth;
+H=window.innerHeight;
+canvas.width=W;
+canvas.height=H;
+});
+
+let state="menu";
+
+let bullets=[];
+let enemies=[];
+let messages=[];
+
+let bulletsLeft=10;
+let bulletsFired=0;
+
+let killed=0;
+let escaped=0;
+
+let planeLife=10;
+
+let touchX=W/2;
+let touchY=H*0.8;
+let touching=false;
+
+let lastFire=0;
+let fireInterval=200;
+
+let startTime=0;
+
+let enemySize=W/20;
+let planeSize=W/25;
+
+function rand(a,b){
+return Math.random()*(b-a)+a;
+}
+
+function spawnEnemy(){
+enemies.push({
+x:rand(0,W-enemySize),
+y:-enemySize,
+speed:rand(1,3),
+hp:enemySize
+});
+}
+
+function spawnWave(){
+let n=Math.floor(rand(3,7));
+for(let i=0;i<n;i++){
+spawnEnemy();
+}
+}
+
+function resetGame(){
+
+bullets=[];
+enemies=[];
+messages=[];
+
+bulletsLeft=10;
+bulletsFired=0;
+
+killed=0;
+escaped=0;
+
+planeLife=10;
+
+startTime=Date.now();
+
+spawnWave();
+
+}
+
+function startGame(){
+
+state="playing";
+
+resetGame();
+
+}
+
+function gameOver(){
+state="over";
+}
+
+canvas.addEventListener("mousedown",e=>{
+touching=true;
+touchX=e.clientX;
+touchY=e.clientY;
+
+if(state==="menu")startGame();
+if(state==="over")startGame();
+});
+
+canvas.addEventListener("mouseup",()=>{
+touching=false;
+});
+
+canvas.addEventListener("mousemove",e=>{
+touchX=e.clientX;
+touchY=e.clientY;
+});
+
+canvas.addEventListener("touchstart",e=>{
+e.preventDefault();
+let t=e.touches[0];
+
+touchX=t.clientX;
+touchY=t.clientY;
+
+touching=true;
+
+if(state==="menu")startGame();
+if(state==="over")startGame();
+
+});
+
+canvas.addEventListener("touchmove",e=>{
+e.preventDefault();
+let t=e.touches[0];
+
+touchX=t.clientX;
+touchY=t.clientY;
+
+});
+
+canvas.addEventListener("touchend",()=>{
+touching=false;
+});
+
+function fire(){
+
+let now=Date.now();
+
+if(now-lastFire<fireInterval)return;
+
+if(bulletsLeft<=0)return;
+
+lastFire=now;
+
+bullets.push({
+x:touchX-10,
+y:touchY-30,
+v:-8
+});
+
+bullets.push({
+x:touchX+10,
+y:touchY-30,
+v:-8
+});
+
+bulletsFired+=2;
+bulletsLeft--;
+
+}
+
+function update(){
+
+if(state!=="playing")return;
+
+if(touching)fire();
+
+for(let i=bullets.length-1;i>=0;i--){
+
+let b=bullets[i];
+
+b.y+=b.v;
+
+if(b.y<0){
+bullets.splice(i,1);
+continue;
+}
+
+for(let j=enemies.length-1;j>=0;j--){
+
+let e=enemies[j];
+
+if(
+b.x<e.x+enemySize &&
+b.x+5>e.x &&
+b.y<e.y+enemySize &&
+b.y+5>e.y
+){
+
+e.hp-=10;
+
+bullets.splice(i,1);
+
+if(e.hp<=0){
+
+killed++;
+
+bulletsLeft+=10;
+
+messages.push({
+x:e.x,
+y:e.y,
+life:60
+});
+
+enemies.splice(j,1);
+
+spawnEnemy();
+
+}
+
+break;
+}
+
+}
+
+}
+
+for(let i=enemies.length-1;i>=0;i--){
+
+let e=enemies[i];
+
+e.y+=e.speed;
+
+if(e.y>H){
+
+escaped++;
+
+enemies.splice(i,1);
+
+spawnEnemy();
+
+}
+
+let dx=Math.abs(touchX-e.x);
+let dy=Math.abs(touchY-e.y);
+
+if(dx<planeSize && dy<planeSize){
+
+planeLife-=0.1;
+
+}
+
+}
+
+if(planeLife<=0||bulletsLeft<=0){
+
+gameOver();
+
+}
+
+if(enemies.length<6){
+spawnEnemy();
+}
+
+}
+
+function drawPlane(){
+
+ctx.fillStyle="lime";
+
+ctx.beginPath();
+
+ctx.moveTo(touchX,touchY-planeSize);
+
+ctx.lineTo(touchX-planeSize,touchY+planeSize);
+
+ctx.lineTo(touchX+planeSize,touchY+planeSize);
+
+ctx.closePath();
+
+ctx.fill();
+
+}
+
+function draw(){
+
+ctx.fillStyle="#334";
+
+ctx.fillRect(0,0,W,H);
+
+if(state==="menu"){
+
+ctx.fillStyle="white";
+
+ctx.font="40px Arial";
+
+ctx.textAlign="center";
+
+ctx.fillText("雷霆战机",W/2,H/2-40);
+
+ctx.font="24px Arial";
+
+ctx.fillText("点击开始游戏",W/2,H/2+20);
+
+return;
+
+}
+
+for(let b of bullets){
+
+ctx.fillStyle="yellow";
+
+ctx.fillRect(b.x,b.y,5,10);
+
+}
+
+for(let e of enemies){
+
+ctx.fillStyle="orange";
+
+ctx.fillRect(e.x,e.y,enemySize,enemySize);
+
+}
+
+drawPlane();
+
+ctx.fillStyle="cyan";
+
+ctx.font="18px Arial";
+
+ctx.textAlign="left";
+
+ctx.fillText("击毁:"+killed,20,30);
+
+ctx.fillText("逃逸:"+escaped,20,60);
+
+ctx.fillText("子弹:"+bulletsLeft,20,90);
+
+ctx.fillText("生命:"+planeLife.toFixed(1),20,120);
+
+if(state==="over"){
+
+ctx.fillStyle="white";
+
+ctx.font="40px Arial";
+
+ctx.textAlign="center";
+
+ctx.fillText("游戏结束",W/2,H/2);
+
+ctx.font="20px Arial";
+
+ctx.fillText("点击重新开始",W/2,H/2+50);
+
+}
+
+}
+
+function loop(){
+
+update();
+
+draw();
+
+requestAnimationFrame(loop);
+
+}
+
+loop();
+
+</script>
+
+</body>
+</html>
