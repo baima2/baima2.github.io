@@ -22,7 +22,6 @@
     var start = false;
     var gameOver = false;
     var bullets = [];
-    var damageHeight = 0;
     var enemies = [];
     var addEnemies = 0;
     var enemyWidth = innerWidth/20;
@@ -34,6 +33,9 @@
     int bulletsAccessible = 0;
     var messages = [];
     var waiting = 0;
+    int planeLife = 0;
+    int gameStartTime = 0;
+    int gameDuration = 0;
 
     // ===== 自定义触摸/鼠标变量（替代原生的 mouseX/mouseY/mousePressed）=====
     window.touchX = innerWidth / 2;   // 默认屏幕中心
@@ -78,8 +80,11 @@
       enemyEscapedCount = 0;
       enemyKilledCount = 0;
       bulletsFired = 0;
-      bulletsAccessible = 1000;
+      bulletsAccessible = 10;
       spawnEnemies();
+      planeLife = 10;
+      gameStartTime = millis();
+      gameDuration = 0;
     }
     
     void setup() {
@@ -170,7 +175,7 @@
         // 游戏结束结算页面
         if (gameOver === true) {
           if (window.touchX > innerWidth/4 && window.touchX < innerWidth*3/4 &&
-              window.touchY > innerHeight/4 && window.touchY < innerHeight*3/4 && waiting >= 5) {
+              window.touchY > innerHeight/4 && window.touchY < innerHeight*3/4 && waiting >= 10) { //确定开始按钮颜色
             if (window.touching) {
               fill(255, 255, 0);
               gameOver = false;
@@ -184,12 +189,35 @@
 
           rect(innerWidth/4, innerHeight/4, innerWidth/2, innerHeight/2);
           fill(255, 0, 0);
-          textAlign(CENTER, CENTER);
           textSize(innerWidth/20);
           waiting += 1/30;
-          var afterFiveSeconds = ceil(5 - waiting);
-          if (afterFiveSeconds >= 0 && gameOver === true) {
-            text("子弹耗尽，游戏结束\n" + afterFiveSeconds + "秒后继续", innerWidth/2, innerHeight/2);
+          var afterTenSeconds = ceil(10 - waiting);
+          if (afterTenSeconds >= 0 && gameOver === true) {
+
+            if (afterTenSeconds >=7) { //三秒内
+              if (bulletsAccessible <= 0) {
+                text("子弹耗尽，游戏结束", innerWidth/2, innerHeight/2);
+              }
+              if (planeLife <= 0) {
+                text("飞机损毁，游戏结束", innerWidth/2, innerHeight/2);
+              }
+            } else {//三秒后
+              var minute = Math.floor(gameDuration / 60);
+              var seconds = Math.floor(gameDuration % 60);
+              var gameDurationFormated = '';
+              if (minute > 0) {
+                gameDurationFormated = minute + "分" + seconds + "秒";
+              } else {
+                gameDurationFormated = seconds + "秒";
+              }
+                textAlign(CENTER, TOP);
+                text("恭喜你摧毁了" + enemyKilledCount + "架敌机" +
+                "\n逃逸" + enemyEscapedCount + "架" +
+                "\n你一共发射了" + bulletsFired + "颗子弹" +
+                "\n本次游戏时长：" + gameDurationFormated, innerWidth/2, innerHeight * 3/10);
+            }
+            textAlign(CENTER, CENTER);
+            text(afterTenSeconds + "秒后继续", innerWidth/2, innerHeight * 7/10);
           } else {
             text("开始游戏 ", innerWidth/2, innerHeight/2);
           }
@@ -240,6 +268,7 @@
           text("屏幕中敌机总数：" + enemies.length, 100, 300);
           text("共发射子弹：" + bulletsFired, 100, 400);
           text("可用子弹总数：" + bulletsAccessible, 100, 500);
+          text("飞机生命值：" + planeLife.toFixed(2), 100, 600);
 
           // 绘制敌机
           fill(255, 255, 0);
@@ -254,8 +283,13 @@
           if (enemies.length < 10) {
             spawnEnemies();
           }
-          if (bulletsAccessible === 0) {
+          if (bulletsAccessible === 0) { //游戏结束条件
             gameOver = true;
+            gameDuration = (millis() - gameStartTime) / 1000;
+          }
+          if (planeLife <= 0) {
+            gameOver = true;
+            gameDuration = (millis() - gameStartTime) / 1000;
           }
 
           // 子弹逻辑
@@ -333,6 +367,7 @@
                       
                       fill(255, 0, 0);
                       text("受到严重撞击", 200, 400);
+                      planeLife -= 10/30;
                       triangle(planeX1, planeY1,
                               planeX2, planeY2,
                               planeX3, planeY3);
@@ -345,6 +380,7 @@
                       
                       fill(0, 0, 255);
                       text("受到轻微撞击", 200, 500);
+                      planeLife -= 1/30;
                       triangle(planeX1, planeY1,
                               planeX2, planeY2,
                               planeX3, planeY3);

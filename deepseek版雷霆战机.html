@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>雷霆战机 · 重制版</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      touch-action: none;  /* 禁止所有触摸滚动/缩放 */
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      background: #1a1a2e;  /* 深色背景代替 Processing 的灰色 */
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    (function() {
+      // ----- 获取 canvas 和上下文 -----
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+
+      // ----- 全局变量（游戏状态）-----
+      let gameState = 'start';          // 'start', 'playing', 'gameover'
+      
+      // 尺寸相关 (动态计算)
+      let canvasWidth = window.innerWidth;
+      let canvasHeight = window.innerHeight;
+
+      // 游戏元素尺寸 (基于屏幕宽度)
+      let planeSize, enemyWidth, enemyHeight, bulletSize, fireSize;
+
+      // 玩家属性
+      let planeX = 0, planeY = 0;          // 飞机中心坐标（实际绘制时会偏移）
+      let planeLife = 10;
+      let invincible = false;               // 无敌状态
+      let invincibleEndTime = 0;            // 无敌结束时间戳 (毫秒)
+      let blinkCounter = 0;                  // 闪烁效果计数器
+
+      // 子弹系统
+      let bullets = [];
+      let lastShotTime = 0;
+      const SHOT_COOLDOWN = 150;             // 毫秒，每秒约6-7发（每次两发）
+      let bulletsLeft = 30;                   // 剩余子弹数
+      let bulletsFired = 0;                   // 总共发射子弹数（用于统计）
+
+      // 敌机系统
+      let enemies = [];
+      let enemyKilled = 0;
+      let enemyEscaped = 0;
+      const MAX_ENEMIES = 20;                  // 同时最多敌机数
+      let lastSpawnTime = 0;
+      const SPAWN_INTERVAL = 800;               // 基础生成间隔（毫秒）
+      
+      // 消息特效（例如“子弹+10”）
+      let messages = [];
+
+      // 触摸控制
+      let touchActive = false;                 // 是否按下（开火）
+      let touchX = canvasWidth / 2;
+      let touchY = canvasHeight / 2;
+
+      // 游戏计时
+      let gameStartTime = 0;
+      let gameDuration = 0;
+
+      // ----- 辅助函数：更新画布尺寸 -----
+      function resizeCanvas() {
+        canvasWidth = window.innerWidth;
+        canvasHeight = window.innerHeight;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+
+        // 重新计算所有尺寸比例
+        planeSize = Math.max(20, Math.floor(canvasWidth / 25));      // 飞机大小
+        enemyWidth = Math.max(25, Math.floor(canvasWidth / 18));     // 敌机宽
+        enemyHeight = enemyWidth;                                     // 保持正方形
+        bulletSize = planeSize / 5;
+        fireSize = planeSize / 2.5;
+
+        // 如果触摸点超出新范围，修正
+        touchX = Math.min(canvasWidth, Math.max(0, touchX));
+        touchY = Math.min(canvasHeight, Math.max(0, touchY));
+      }
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas(); // 初始化
+
+      // ----- 触摸事件监听 (同时支持鼠标，便于调试) -----
+      function handleTouchStart(e) {
+        e.preventDefault();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        touchX = Math.min(canvasWidth, Math.max(0, clientX));
+        touchY = Math.min(canvasHeight, Math.max(0, clientY));
+        touchActive = true;
+      }
+
+      function handleTouchMove(e) {
+        e.preventDefault();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        touchX = Math.min(canvasWidth, Math.max(0, clientX));
+        touchY = Math.min(canvasHeight, Math.max(0, clientY));
+      }
+
+      function handleTouchEnd(e) {
+        e.preventDefault();
+        touchActive = false;
+      }
+
+      // 注册事件
+      canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+      canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+      canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+      canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+      canvas.addEventListener('mousedown', handleTouchStart);
+      canvas.addEventListener('mousemove', handleTouchMove);
+      canvas.addEventListener('mouseup', handleTouchEnd);
+      canvas.addEventListener('mouseleave', handleTouchEnd); // 鼠标离开画布视为松开
+
+      // ----- 游戏初始化 / 重置 -----
+      function resetGame() {
+        gameState = 'playing';
+        planeLife = 10;
+        invincible = false;
+        bullets = [];
+        enemies = [];
+        messages = [];
+        bulletsLeft = 30;
+        bulletsFired = 0;
+        enemyKilled = 0;
+        enemyEscaped = 0;
+        gameStartTime = performance.now();
+        gameDuration = 0;
+
+        // 初始生成几架敌机，避免空场
+        for (let i = 0; i < 3; i++) {
+          spawnEnemy(true); // 强制生成
+        }
+        lastSpawnTime = performance.now();
+      }
+
+      // ----- 生成一架敌机 (可指定是否忽略最大数量检查)-----
+      function spawnEnemy(force = false) {
+        if (!force && enemies.length >= MAX_ENEMIES) return;
+        
+        // 随机水平位置，避免过于重叠（简单检测）
+        let x;
+        let attempts = 0;
+        do {
+          x = Math.random() * (canvasWidth - enemyWidth);
+          attempts++;
+          // 如果尝试太多，直接退出循环
+        } while (attempts < 30 && enemies.some(e => Math.abs(e.x - x) < enemyWidth * 0.8));
+        
+        // 速度随游戏时间增加而加快 (基于击杀数)
+        const baseSpeed = 1 + enemyKilled * 0.1;
+        const speed = Math.min(5, baseSpeed + Math.random() * 2);
+        
+        enemies.push({
+          x: x,
+          y: -enemyHeight,                     // 从顶外出现
+          width: enemyWidth,
+          height: enemyHeight,
+          hp: 100,                              // 生命值100，子弹每次伤害20 => 5枪击毁
+          maxHp: 100,
+          speed: speed,
+        });
+      }
+
+      // ----- 发射子弹 (由触摸触发) -----
+      function shootBullet() {
+        if (bulletsLeft <= 0) return;          // 无子弹
+
+        const now = performance.now();
+        if (now - lastShotTime < SHOT_COOLDOWN) return;
+
+        // 计算炮口位置 (基于飞机实际绘制位置，飞机中心在 touchX, touchY-planeSize*1.2)
+        const planeDrawY = touchY - planeSize * 1.2; // 飞机顶部Y坐标
+        const fireY = planeDrawY + planeSize * 0.5;   // 炮口Y (略低于机头)
+        
+        const leftFireX = touchX - fireSize - bulletSize;
+        const rightFireX = touchX + fireSize;
+        
+        // 添加两颗子弹
+        bullets.push({
+          x: leftFireX,
+          y: fireY,
+          width: bulletSize,
+          height: bulletSize,
+        });
+        bullets.push({
+          x: rightFireX,
+          y: fireY,
+          width: bulletSize,
+          height: bulletSize,
+        });
+
+        bulletsLeft -= 2;           // 消耗2颗子弹
+        if (bulletsLeft < 0) bulletsLeft = 0;
+        bulletsFired += 2;
+        lastShotTime = now;
+      }
+
+      // ----- 更新逻辑 (每帧调用) -----
+      function update(now) {
+        if (gameState !== 'playing') return;
+
+        // 游戏时长
+        gameDuration = (now - gameStartTime) / 1000;
+
+        // 无敌状态计时
+        if (invincible && now > invincibleEndTime) {
+          invincible = false;
+        }
+
+        // 1. 发射子弹（如果触摸按下）
+        if (touchActive && bulletsLeft > 0) {
+          shootBullet();
+        }
+
+        // 2. 子弹移动 (向上)
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          bullets[i].y -= 12;  // 子弹速度
+          if (bullets[i].y + bullets[i].height < 0) {
+            bullets.splice(i, 1);
+          }
+        }
+
+        // 3. 敌机移动 + 逃逸检测
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const e = enemies[i];
+          e.y += e.speed;
+          if (e.y > canvasHeight) {  // 逃逸
+            enemies.splice(i, 1);
+            enemyEscaped++;
+          }
+        }
+
+        // 4. 子弹与敌机碰撞检测 (双重循环，但性能可接受)
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          const b = bullets[i];
+          let bulletUsed = false;
+
+          for (let j = enemies.length - 1; j >= 0; j--) {
+            const e = enemies[j];
+            // 矩形碰撞检测
+            if (b.x < e.x + e.width &&
+                b.x + b.width > e.x &&
+                b.y < e.y + e.height &&
+                b.y + b.height > e.y) {
+              
+              // 子弹击中
+              e.hp -= 20;  // 每颗子弹伤害20
+              bulletUsed = true;
+
+              if (e.hp <= 0) {
+                // 敌机摧毁
+                enemies.splice(j, 1);
+                enemyKilled++;
+                bulletsLeft += 10;   // 奖励10发子弹
+                // 添加飘字消息
+                messages.push({
+                  text: '+10 子弹',
+                  x: e.x + e.width / 2,
+                  y: e.y,
+                  life: 60,          // 大约1秒 (60帧)
+                });
+              }
+              break; // 一颗子弹只能击中一架敌机
+            }
+          }
+
+          if (bulletUsed) {
+            bullets.splice(i, 1);
+          }
+        }
+
+        // 5. 敌机与玩家碰撞 (使用矩形近似，且无敌保护)
+        if (!invincible) {
+          for (let i = enemies.length - 1; i >= 0; i--) {
+            const e = enemies[i];
+            // 玩家飞机近似为一个矩形（三角形包围盒），范围略大于实际三角
+            const planeLeft = touchX - planeSize * 1.2;
+            const planeRight = touchX + planeSize * 1.2;
+            const planeTop = touchY - planeSize * 2.2;  // 机头更高
+            const planeBottom = touchY + planeSize * 1.2;
+
+            if (e.x < planeRight &&
+                e.x + e.width > planeLeft &&
+                e.y < planeBottom &&
+                e.y + e.height > planeTop) {
+              
+              // 碰撞！扣血，敌机消失，进入无敌
+              planeLife -= 1;
+              enemies.splice(i, 1);
+
+              // 开启无敌 (1.5秒)
+              invincible = true;
+              invincibleEndTime = now + 1500; // 毫秒
+
+              // 如果生命归零，游戏结束
+              if (planeLife <= 0) {
+                gameState = 'gameover';
+              }
+              // 一次只处理一架碰撞，避免瞬间多次扣血
+              break;
+            }
+          }
+        }
+
+        // 6. 游戏结束检查 (生命≤0 或 子弹≤0)
+        if (planeLife <= 0 || bulletsLeft <= 0) {
+          gameState = 'gameover';
+        }
+
+        // 7. 敌机生成 (按时间间隔)
+        if (now - lastSpawnTime > SPAWN_INTERVAL && enemies.length < MAX_ENEMIES) {
+          // 生成数量随击杀数增加 (1~3架)
+          const count = Math.min(3, 1 + Math.floor(enemyKilled / 5));
+          for (let i = 0; i < count; i++) {
+            spawnEnemy();
+          }
+          lastSpawnTime = now;
+        }
+
+        // 8. 更新消息特效
+        for (let i = messages.length - 1; i >= 0; i--) {
+          messages[i].life--;
+          messages[i].y -= 0.8;  // 向上飘
+          if (messages[i].life <= 0) {
+            messages.splice(i, 1);
+          }
+        }
+      }
+
+      // ----- 绘制 -----
+      function draw() {
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+        // 绘制星空效果（简单点缀）
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 50; i++) {
+          if (i % 2 === 0) continue; // 随机感
+          ctx.fillRect( (i * 37) % canvasWidth, (performance.now() * 0.02 + i * 23) % canvasHeight, 2, 2);
+        }
+
+        // ----- 根据状态绘制不同界面 -----
+        if (gameState === 'start') {
+          drawStartScreen();
+        } else if (gameState === 'playing') {
+          drawGameScreen();
+        } else if (gameState === 'gameover') {
+          drawGameOverScreen();
+        }
+
+        // 统一绘制消息特效（在所有界面之上）
+        ctx.font = 'bold 20px "Microsoft Yahei"';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        messages.forEach(msg => {
+          const alpha = Math.min(1, msg.life / 30);
+          ctx.fillStyle = `rgba(255, 215, 0, ${alpha})`;
+          ctx.fillText(msg.text, msg.x, msg.y);
+        });
+      }
+
+      function drawStartScreen() {
+        // 半透明遮罩
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        const btnW = canvasWidth * 0.5;
+        const btnH = canvasHeight * 0.2;
+        const btnX = canvasWidth * 0.25;
+        const btnY = canvasHeight * 0.4;
+
+        // 按钮颜色：若触摸在区域内且按下，变黄；否则绿
+        let btnColor = '#2ecc71'; // 绿
+        if (touchX > btnX && touchX < btnX + btnW && touchY > btnY && touchY < btnY + btnH) {
+          btnColor = touchActive ? '#f1c40f' : '#27ae60'; // 触摸按下变黄，悬停变深绿
+        }
+
+        ctx.fillStyle = btnColor;
+        ctx.fillRect(btnX, btnY, btnW, btnH);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(btnX, btnY, btnW, btnH);
+
+        ctx.font = 'bold 40px "Microsoft Yahei"';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('开始游戏', canvasWidth * 0.5, btnY + btnH / 2);
+
+        // 提示文字
+        ctx.font = '18px "Microsoft Yahei"';
+        ctx.fillStyle = '#ccc';
+        ctx.fillText('触摸屏幕任意位置移动战机', canvasWidth * 0.5, btnY + btnH + 40);
+        ctx.fillText('按住屏幕开火', canvasWidth * 0.5, btnY + btnH + 70);
+        
+        // 检测按钮点击（触摸结束且手指在按钮内时启动游戏）
+        // 通过触摸结束事件直接处理，但为了响应式，在update中做状态切换容易滞后。
+        // 直接在事件监听里做简单处理：如果触摸结束且坐标在按钮内，重置游戏。
+        // 但为保持清晰，我们在draw中不处理逻辑，逻辑由事件驱动。
+      }
+
+      function drawGameScreen() {
+        // ----- 绘制飞机 (带无敌闪烁) -----
+        const planeDrawY = touchY - planeSize * 1.2; // 机头位置Y
+        
+        // 无敌闪烁：每帧交替透明度
+        let drawPlane = true;
+        if (invincible) {
+          // 快速闪烁 (大约每秒6次)
+          if (Math.floor(performance.now() / 150) % 2 === 0) {
+            drawPlane = false;
+          }
+        }
+
+        if (drawPlane) {
+          // 绘制绿色三角飞机
+          ctx.fillStyle = '#0f0';
+          ctx.beginPath();
+          ctx.moveTo(touchX, planeDrawY);                         // 机头
+          ctx.lineTo(touchX - planeSize, planeDrawY + planeSize * 2); // 左下
+          ctx.lineTo(touchX + planeSize, planeDrawY + planeSize * 2); // 右下
+          ctx.closePath();
+          ctx.fill();
+
+          // 绘制两个炮口
+          ctx.fillStyle = '#ffaa00';
+          ctx.fillRect(touchX - fireSize - bulletSize, planeDrawY + planeSize * 0.5, bulletSize, fireSize * 2);
+          ctx.fillRect(touchX + fireSize, planeDrawY + planeSize * 0.5, bulletSize, fireSize * 2);
+        }
+
+        // ----- 绘制敌机 (带血量条) -----
+        enemies.forEach(e => {
+          // 敌机机体
+          ctx.fillStyle = '#e67e22';
+          ctx.fillRect(e.x, e.y, e.width, e.height);
+
+          // 血条背景
+          ctx.fillStyle = '#333';
+          ctx.fillRect(e.x, e.y - 8, e.width, 4);
+          // 血量
+          const hpPercent = e.hp / e.maxHp;
+          ctx.fillStyle = hpPercent > 0.6 ? '#2ecc71' : (hpPercent > 0.3 ? '#f39c12' : '#e74c3c');
+          ctx.fillRect(e.x, e.y - 8, e.width * hpPercent, 4);
+        });
+
+        // ----- 绘制子弹 -----
+        ctx.fillStyle = '#ffff00';
+        bullets.forEach(b => {
+          ctx.fillRect(b.x, b.y, b.width, b.height);
+        });
+
+        // ----- 绘制 HUD 信息 -----
+        ctx.font = 'bold 22px "Microsoft Yahei"';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`生命: ${planeLife}`, 20, 20);
+        ctx.fillText(`子弹: ${bulletsLeft}`, 20, 55);
+        ctx.fillText(`击毁: ${enemyKilled}`, 20, 90);
+        ctx.fillText(`逃逸: ${enemyEscaped}`, 20, 125);
+
+        // 右上角显示游戏时间
+        const minutes = Math.floor(gameDuration / 60);
+        const seconds = Math.floor(gameDuration % 60);
+        ctx.textAlign = 'right';
+        ctx.fillText(`时间: ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`, canvasWidth - 20, 20);
+      }
+
+      function drawGameOverScreen() {
+        // 半透明遮罩
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        // 显示统计信息
+        ctx.font = 'bold 36px "Microsoft Yahei"';
+        ctx.fillStyle = '#e74c3c';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('游戏结束', canvasWidth * 0.5, canvasHeight * 0.2);
+
+        ctx.font = '24px "Microsoft Yahei"';
+        ctx.fillStyle = '#fff';
+        const minutes = Math.floor(gameDuration / 60);
+        const seconds = Math.floor(gameDuration % 60);
+        ctx.fillText(`击毁敌机: ${enemyKilled}`, canvasWidth * 0.5, canvasHeight * 0.35);
+        ctx.fillText(`逃逸敌机: ${enemyEscaped}`, canvasWidth * 0.5, canvasHeight * 0.42);
+        ctx.fillText(`发射子弹: ${bulletsFired}`, canvasWidth * 0.5, canvasHeight * 0.49);
+        ctx.fillText(`游戏时长: ${minutes}分${seconds}秒`, canvasWidth * 0.5, canvasHeight * 0.56);
+        ctx.fillText(`剩余生命: ${planeLife > 0 ? planeLife : 0}`, canvasWidth * 0.5, canvasHeight * 0.63);
+
+        // 重新开始按钮
+        const btnW = canvasWidth * 0.5;
+        const btnH = canvasHeight * 0.12;
+        const btnX = canvasWidth * 0.25;
+        const btnY = canvasHeight * 0.7;
+
+        let btnColor = '#3498db';
+        if (touchX > btnX && touchX < btnX + btnW && touchY > btnY && touchY < btnY + btnH) {
+          btnColor = touchActive ? '#f1c40f' : '#2980b9';
+        }
+
+        ctx.fillStyle = btnColor;
+        ctx.fillRect(btnX, btnY, btnW, btnH);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(btnX, btnY, btnW, btnH);
+
+        ctx.font = 'bold 32px "Microsoft Yahei"';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('重新开始', canvasWidth * 0.5, btnY + btnH / 2);
+      }
+
+      // ----- 处理界面点击（开始/重新开始）-----
+      function handleUI() {
+        if (gameState === 'start') {
+          const btnW = canvasWidth * 0.5;
+          const btnH = canvasHeight * 0.2;
+          const btnX = canvasWidth * 0.25;
+          const btnY = canvasHeight * 0.4;
+          // 检测触摸结束时的位置 (由事件调用)
+          if (touchX > btnX && touchX < btnX + btnW && touchY > btnY && touchY < btnY + btnH) {
+            resetGame();
+          }
+        } else if (gameState === 'gameover') {
+          const btnW = canvasWidth * 0.5;
+          const btnH = canvasHeight * 0.12;
+          const btnX = canvasWidth * 0.25;
+          const btnY = canvasHeight * 0.7;
+          if (touchX > btnX && touchX < btnX + btnW && touchY > btnY && touchY < btnY + btnH) {
+            resetGame();
+          }
+        }
+      }
+
+      // ----- 事件监听：处理触摸结束时的界面跳转 -----
+      canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        handleUI();
+      });
+      canvas.addEventListener('mouseup', (e) => {
+        e.preventDefault();
+        handleUI();
+      });
+
+      // ----- 动画循环 -----
+      function gameLoop() {
+        const now = performance.now();
+        update(now);
+        draw();
+        requestAnimationFrame(gameLoop);
+      }
+      gameLoop();
+
+      // 防止手机下拉/滚动（已经通过CSS和preventDefault处理，但再强化一下）
+      document.body.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    })();
+  </script>
+</body>
+</html>
